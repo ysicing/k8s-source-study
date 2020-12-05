@@ -1,0 +1,24 @@
+name: "kss"
+on:
+  push:
+    branches:
+      - master
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: install kind
+        uses: helm/kind-action@v1.1.0
+      - name: install kubectl
+        uses: azure/setup-kubectl@v1
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.15.x
+      - name: test
+        run: |
+          export TZ='Asia/Shanghai'
+          export PATH=$PATH:$(go env GOPATH)/bin
+          go run example/portforward/portforward.go
