@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes"
@@ -18,8 +19,8 @@ import (
 	"k8s.io/client-go/transport/spdy"
 	"net"
 	"net/http"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"os"
+	"os/signal"
 )
 
 type PortForward struct {
@@ -52,6 +53,8 @@ func NewPortForward(namespace string, servicename string,sport, dport int) (*Por
 	if err != nil {
 		return pf, errors.Wrap(err, "create k8s client err")
 	}
+	pf.stopChan = make(chan struct{}, 1)
+	pf.readyChan = make(chan struct{})
 	return pf, nil
 }
 
@@ -96,9 +99,6 @@ func (p *PortForward) dialer() (httpstream.Dialer, error) {
 }
 
 func (p *PortForward) Start() error {
-	p.stopChan = make(chan  struct{}, 1)
-	readyChan := make(chan struct{}, 1)
-	errChan := make(chan error, 1)
 
 	listenPort, err := p.getListenPort()
 	if err != nil {
@@ -115,23 +115,23 @@ func (p *PortForward) Start() error {
 	}
 
 	discard := ioutil.Discard
-	pf, err := portforward.New(dialer, ports, p.stopChan, readyChan, discard, discard)
+	pf, err := portforward.New(dialer, ports, p.stopChan, p.readyChan, discard, discard)
 	if err != nil {
 		return errors.Wrap(err, "Could not port forward into pod")
 	}
 
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+	defer signal.Stop(signals)
+
 	go func() {
-		errChan <- pf.ForwardPorts()
+		<-signals
+		if p.stopChan != nil {
+			close(p.stopChan)
+		}
 	}()
 
-	select {
-	case err = <-errChan:
-		return errors.Wrap(err, "Could not create port forward")
-	case <-readyChan:
-		return nil
-	}
-
-	return nil
+	return pf.ForwardPorts()
 }
 
 // Stop a port forward.
