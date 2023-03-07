@@ -12,7 +12,7 @@ jobs:
       - name: install kind
         uses: helm/kind-action@v1.1.0
       - name: install kubectl
-        uses: azure/setup-kubectl@v1
+        uses: azure/setup-kubectl@v3
       - name: Install Go
         uses: actions/setup-go@v1
         with:
